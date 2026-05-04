@@ -165,23 +165,26 @@ export function extractFromText(text) {
     subtotal:  parseAmount(first(text, [/subtotal[:\s]+[€$£¥]?\s*([\d,\.]+)/i, /sub\s*total[:\s]+[€$£¥]?\s*([\d,\.]+)/i])),
     tax:       parseAmount(first(text, [/(?:tax|vat|gst|hst)\s*(?:\(\d+%\))?[:\s]+[€$£¥]?\s*([\d,\.]+)/i])),
     total:     (() => {
-      // Strategy: find all "Total X.XX" matches, exclude any preceded by "sub"
-      // Works even when PDF text has no real newlines
       const sub = parseAmount(first(text, [/subtotal[:\s]+[€$£¥]?\s*([\d,\.]+)/i, /sub\s*total[:\s]+[€$£¥]?\s*([\d,\.]+)/i]));
       const tax = parseAmount(first(text, [/(?:tax|vat|gst|hst)\s*(?:\(\d+%\))?[:\s]+[€$£¥]?\s*([\d,\.]+)/i]));
 
-      // Find all occurrences of "total" in text, pick the one not preceded by "sub"
-      const totalRegex = /(?:^|\s|\n)(?:total\s*due|amount\s*due|grand\s*total|total\s*amount|total)[:\s]+[€$£¥]?\s*([\d,\.]+)/gi;
-      let match, lastGoodMatch = null;
-      while ((match = totalRegex.exec(text)) !== null) {
-        const before = text.slice(Math.max(0, match.index - 3), match.index).toLowerCase();
-        if (!before.includes('sub')) {
-          lastGoodMatch = match[1];
+      // Find ALL numbers that follow the word "total" (case insensitive)
+      // Collect them all, then pick the LAST one (most likely the grand total at bottom of doc)
+      // Skip any match where "sub" appears immediately before "total"
+      const allMatches = [];
+      const re = /([A-Za-z\s]*)total[\s:]+([\d,\.]+)/gi;
+      let m;
+      while ((m = re.exec(text)) !== null) {
+        const prefix = m[1].toLowerCase();
+        if (!prefix.includes('sub')) {
+          allMatches.push(parseFloat(m[2].replace(/,/g, '')));
         }
       }
-      const extracted = parseAmount(lastGoodMatch);
 
-      // If extracted looks like subtotal (same value), calculate instead
+      // The grand total is always the largest "total" value in the document
+      // (subtotal < total, line item totals < grand total)
+      const extracted = allMatches.length > 0 ? Math.max(...allMatches) : null;
+
       if (!extracted && sub !== null && tax !== null) return sub + tax;
       if (extracted && sub !== null && tax !== null && Math.abs(extracted - sub) < 0.01) return sub + tax;
       return extracted;
@@ -337,8 +340,6 @@ async function extractFromPDF(arrayBuffer) {
     fullText += '\n';
   }
 
-  // Log raw PDF text to console so we can see what pdf.js actually extracted
-  console.log('[DocPipeline] Raw PDF text:\n' + fullText);
   return extractFromText(fullText);
 }
 
