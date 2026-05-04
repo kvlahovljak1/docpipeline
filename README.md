@@ -27,7 +27,8 @@ npm start
 ```
 
 Opens at [http://localhost:3000](http://localhost:3000)
-P.S. hosted at https://docpipeline-gaapd4ob2-kvlahovljak1s-projects.vercel.app
+
+P.S. hosted at https://docpipeline-ox2j39fyg-kvlahovljak1s-projects.vercel.app
 
 ---
 
