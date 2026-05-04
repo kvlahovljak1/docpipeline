@@ -337,6 +337,8 @@ async function extractFromPDF(arrayBuffer) {
     fullText += '\n';
   }
 
+  // Log raw PDF text to console so we can see what pdf.js actually extracted
+  console.log('[DocPipeline] Raw PDF text:\n' + fullText);
   return extractFromText(fullText);
 }
 
