@@ -135,12 +135,12 @@ export function extractFromText(text) {
   // Try "Invoice #X", "Number: X", bare "Invoice X" (word followed by alphanumeric id)
   const documentNumber =
     first(text, [
-      /(?:invoice|inv|po|purchase\s*order|order|doc(?:ument)?|ref(?:erence)?)\s*[#:\-]+\s*([A-Z0-9\-\/]{2,30})/i,
-      /#\s*([A-Z0-9\-\/]{3,20})/i,
-      /number[:\s]+([A-Z0-9\-\/]{2,20})/i,
+      // "Number: INV-1000" or "Number: 1000" — capture full alphanumeric token including dashes
+      /number[:\s]+([A-Z0-9][A-Z0-9\-\/]{1,29})/i,
+      /(?:invoice|inv|po|purchase\s*order|order|doc(?:ument)?|ref(?:erence)?)\s*[#:\-]+\s*([A-Z0-9][A-Z0-9\-\/]{1,29})/i,
+      /#\s*([A-Z0-9][A-Z0-9\-\/]{2,20})/i,
     ]) ||
     first(text, [
-      // "Invoice 3724" — keyword space then a standalone number/id on same line
       /^(?:invoice|inv|po|order)\s+([A-Z0-9\-\/]{2,30})\s*$/im,
     ]);
 
@@ -165,17 +165,23 @@ export function extractFromText(text) {
     subtotal:  parseAmount(first(text, [/subtotal[:\s]+[€$£¥]?\s*([\d,\.]+)/i, /sub\s*total[:\s]+[€$£¥]?\s*([\d,\.]+)/i])),
     tax:       parseAmount(first(text, [/(?:tax|vat|gst|hst)\s*(?:\(\d+%\))?[:\s]+[€$£¥]?\s*([\d,\.]+)/i])),
     total:     (() => {
-      // Anchored to line start to avoid matching "subtotal"
-      const extracted = parseAmount(first(text, [
-        /(?:total\s*due|amount\s*due|grand\s*total|total\s*amount)[:\s]+[€$£¥]?\s*([\d,\.]+)/i,
-        /^total[:\s]+[€$£¥]?\s*([\d,\.]+)\s*$/im,
-        /^total\s+[€$£¥]?([\d,\.]+)\s*$/im,
-      ]));
-      // Fallback: calculate subtotal + tax if:
-      // (a) no total found, or
-      // (b) extracted total suspiciously equals subtotal (regex matched subtotal instead)
+      // Strategy: find all "Total X.XX" matches, exclude any preceded by "sub"
+      // Works even when PDF text has no real newlines
       const sub = parseAmount(first(text, [/subtotal[:\s]+[€$£¥]?\s*([\d,\.]+)/i, /sub\s*total[:\s]+[€$£¥]?\s*([\d,\.]+)/i]));
       const tax = parseAmount(first(text, [/(?:tax|vat|gst|hst)\s*(?:\(\d+%\))?[:\s]+[€$£¥]?\s*([\d,\.]+)/i]));
+
+      // Find all occurrences of "total" in text, pick the one not preceded by "sub"
+      const totalRegex = /(?:^|\s|\n)(?:total\s*due|amount\s*due|grand\s*total|total\s*amount|total)[:\s]+[€$£¥]?\s*([\d,\.]+)/gi;
+      let match, lastGoodMatch = null;
+      while ((match = totalRegex.exec(text)) !== null) {
+        const before = text.slice(Math.max(0, match.index - 3), match.index).toLowerCase();
+        if (!before.includes('sub')) {
+          lastGoodMatch = match[1];
+        }
+      }
+      const extracted = parseAmount(lastGoodMatch);
+
+      // If extracted looks like subtotal (same value), calculate instead
       if (!extracted && sub !== null && tax !== null) return sub + tax;
       if (extracted && sub !== null && tax !== null && Math.abs(extracted - sub) < 0.01) return sub + tax;
       return extracted;
