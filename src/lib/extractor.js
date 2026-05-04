@@ -168,26 +168,19 @@ export function extractFromText(text) {
       const sub = parseAmount(first(text, [/subtotal[:\s]+[€$£¥]?\s*([\d,\.]+)/i, /sub\s*total[:\s]+[€$£¥]?\s*([\d,\.]+)/i]));
       const tax = parseAmount(first(text, [/(?:tax|vat|gst|hst)\s*(?:\(\d+%\))?[:\s]+[€$£¥]?\s*([\d,\.]+)/i]));
 
-      // Find ALL numbers that follow the word "total" (case insensitive)
-      // Collect them all, then pick the LAST one (most likely the grand total at bottom of doc)
-      // Skip any match where "sub" appears immediately before "total"
-      const allMatches = [];
-      const re = /([A-Za-z\s]*)total[\s:]+([\d,\.]+)/gi;
-      let m;
-      while ((m = re.exec(text)) !== null) {
-        const prefix = m[1].toLowerCase();
-        if (!prefix.includes('sub')) {
-          allMatches.push(parseFloat(m[2].replace(/,/g, '')));
+      // Rule: if subtotal exists, total = subtotal + tax (tax defaults to 0 if missing)
+      // This is reliable regardless of how the PDF text is reconstructed
+      if (sub !== null) return sub + (tax || 0);
+
+      // No subtotal — read total directly from text, skip any line containing "sub"
+      const lines = text.split(/[\n\r]+/);
+      for (const line of lines) {
+        if (/total/i.test(line) && !/subtotal/i.test(line)) {
+          const numMatch = line.match(/([\d,\.]+)\s*$/);
+          if (numMatch) return parseAmount(numMatch[1]);
         }
       }
-
-      // The grand total is always the largest "total" value in the document
-      // (subtotal < total, line item totals < grand total)
-      const extracted = allMatches.length > 0 ? Math.max(...allMatches) : null;
-
-      if (!extracted && sub !== null && tax !== null) return sub + tax;
-      if (extracted && sub !== null && tax !== null && Math.abs(extracted - sub) < 0.01) return sub + tax;
-      return extracted;
+      return null;
     })(),
   };
 }
