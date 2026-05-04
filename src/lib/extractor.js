@@ -165,17 +165,19 @@ export function extractFromText(text) {
     subtotal:  parseAmount(first(text, [/subtotal[:\s]+[€$£¥]?\s*([\d,\.]+)/i, /sub\s*total[:\s]+[€$£¥]?\s*([\d,\.]+)/i])),
     tax:       parseAmount(first(text, [/(?:tax|vat|gst|hst)\s*(?:\(\d+%\))?[:\s]+[€$£¥]?\s*([\d,\.]+)/i])),
     total:     (() => {
-      // Use negative lookbehind so "subtotal" doesn't match the "total" pattern
+      // Anchored to line start to avoid matching "subtotal"
       const extracted = parseAmount(first(text, [
         /(?:total\s*due|amount\s*due|grand\s*total|total\s*amount)[:\s]+[€$£¥]?\s*([\d,\.]+)/i,
-        /(?<!sub)\btotal[:\s]+[€$£¥]?\s*([\d,\.]+)/i,
+        /^total[:\s]+[€$£¥]?\s*([\d,\.]+)\s*$/im,
         /^total\s+[€$£¥]?([\d,\.]+)\s*$/im,
       ]));
-      // Fallback: calculate from subtotal + tax if total not found or looks wrong
-      const sub = parseAmount(first(text, [/subtotal[:\s]+[€$£¥]?\s*([\d,\.]+)/i]));
+      // Fallback: calculate subtotal + tax if:
+      // (a) no total found, or
+      // (b) extracted total suspiciously equals subtotal (regex matched subtotal instead)
+      const sub = parseAmount(first(text, [/subtotal[:\s]+[€$£¥]?\s*([\d,\.]+)/i, /sub\s*total[:\s]+[€$£¥]?\s*([\d,\.]+)/i]));
       const tax = parseAmount(first(text, [/(?:tax|vat|gst|hst)\s*(?:\(\d+%\))?[:\s]+[€$£¥]?\s*([\d,\.]+)/i]));
       if (!extracted && sub !== null && tax !== null) return sub + tax;
-      if (extracted && sub !== null && Math.abs(extracted - sub) < 0.01 && tax !== null) return sub + tax;
+      if (extracted && sub !== null && tax !== null && Math.abs(extracted - sub) < 0.01) return sub + tax;
       return extracted;
     })(),
   };
