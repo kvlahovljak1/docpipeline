@@ -176,7 +176,8 @@ export function extractFromText(text) {
       const lines = text.split(/[\n\r]+/);
       for (const line of lines) {
         if (/total/i.test(line) && !/subtotal/i.test(line)) {
-          const numMatch = line.match(/([\d,\.]+)\s*$/);
+          // Match number anywhere after "total:", handles "Total: 758 EUR" and "Total 758"
+          const numMatch = line.match(/total[:\s]+[€$£¥]?\s*([\d,\.]+)/i);
           if (numMatch) return parseAmount(numMatch[1]);
         }
       }
